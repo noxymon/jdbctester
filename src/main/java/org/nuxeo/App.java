@@ -163,19 +163,11 @@ public class App {
                 conn.close();
             }
         }
+        consoleReporter(reporterList, baos);
+        influxDbReporter(reporterList, prop);
+    }
 
-        if (reporterList.contains("console")) {
-            final ConsoleReporter consoleReporter = ConsoleReporter.forRegistry(metrics)
-                    .build();
-            consoleReporter.report();
-            try {
-                String content = baos.toString("ISO-8859-1");
-                log.info(content);
-            } catch (UnsupportedEncodingException e) {
-                log.error(e.getMessage(), e);
-            }
-        }
-
+    private static void influxDbReporter(List<String> reporterList, Properties prop) {
         if (reporterList.contains("influxdb")) {
             final String influxDbHost = prop.getProperty("influxdb.host");
             final Integer influxDbPort = Integer.valueOf(prop.getProperty("influxdb.port"));
@@ -188,6 +180,20 @@ public class App {
                     .tag("application", "jdbcTester")
                     .build();
             influxdbReporter.report();
+        }
+    }
+
+    private static void consoleReporter(List<String> reporterList, ByteArrayOutputStream baos) {
+        if (reporterList.contains("console")) {
+            final ConsoleReporter consoleReporter = ConsoleReporter.forRegistry(metrics)
+                    .build();
+            consoleReporter.report();
+            try {
+                String content = baos.toString("ISO-8859-1");
+                log.info(content);
+            } catch (UnsupportedEncodingException e) {
+                log.error(e.getMessage(), e);
+            }
         }
     }
 
