@@ -20,6 +20,15 @@
  */
 package org.nuxeo;
 
+import com.codahale.metrics.ConsoleReporter;
+import com.codahale.metrics.MetricRegistry;
+import com.codahale.metrics.ScheduledReporter;
+import com.codahale.metrics.Timer;
+import metrics_influxdb.HttpInfluxdbProtocol;
+import metrics_influxdb.InfluxdbReporter;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+
 import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -34,16 +43,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Properties;
-import java.util.concurrent.TimeUnit;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-
-import com.yammer.metrics.Metrics;
-import com.yammer.metrics.core.Timer;
-import com.yammer.metrics.core.TimerContext;
-import com.yammer.metrics.reporting.ConsoleReporter;
 
 /**
  * Test jdbc connection and network latency
@@ -53,14 +55,10 @@ public class App {
 
     private static final Log log = LogFactory.getLog(App.class);
 
-    private final static Timer connTimer = Metrics.defaultRegistry().newTimer(
-            App.class, "connection", TimeUnit.MILLISECONDS, TimeUnit.SECONDS);
-
-    private final static Timer execTimer = Metrics.defaultRegistry().newTimer(
-            App.class, "execution", TimeUnit.MILLISECONDS, TimeUnit.SECONDS);
-
-    private final static Timer fetchingTimer = Metrics.defaultRegistry().newTimer(
-            App.class, "fetching", TimeUnit.MILLISECONDS, TimeUnit.SECONDS);
+    private static final MetricRegistry metrics = new MetricRegistry();
+    private static final Timer connectionTimer = metrics.timer("connection");
+    private static final Timer executionTimer = metrics.timer("execution");
+    private static final Timer fecthTimer = metrics.timer("fecthing");
 
     private static final String CONFIG_KEY = "config";
 
@@ -78,23 +76,23 @@ public class App {
         String connectionURL = prop.getProperty("url");
         String driver = prop.getProperty("driver");
         String query = prop.getProperty("query");
+        List<String> reporterList = Arrays.asList(prop.getProperty("reporter").trim().toLowerCase().split(","));
 
         log.info("Connect to:" + connectionURL + " from " + getHostName());
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         PrintStream printStream = new PrintStream(baos);
-        final ConsoleReporter reporter = new ConsoleReporter(printStream);
 
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
-        TimerContext tc = null;
+        Timer.Context tc = null;
         int repeat = Integer.valueOf(
                 System.getProperty(REPEAT_KEY, DEFAULT_REPEAT)).intValue();
 
         log.info("Submiting " + repeat + " queries: " + query);
         try {
             Class.forName(driver);
-            tc = connTimer.time();
+            tc = connectionTimer.time();
             conn = DriverManager.getConnection(connectionURL, user, password);
             tc.stop();
             ps = conn.prepareStatement(query,
@@ -130,10 +128,10 @@ public class App {
             int bytes = 0;
 
             for (int i = 0; i < repeat; i++) {
-                tc = execTimer.time();
+                tc = executionTimer.time();
                 rs = ps.executeQuery();
                 tc.stop();
-                tc = fetchingTimer.time();
+                tc = fecthTimer.time();
                 ResultSetMetaData rsmd = rs.getMetaData();
                 int cols = rsmd.getColumnCount();
                 while (rs.next()) {
@@ -165,14 +163,32 @@ public class App {
                 conn.close();
             }
         }
-        reporter.run();
-        try {
-            String content = baos.toString("ISO-8859-1");
-            log.info(content);
-        } catch (UnsupportedEncodingException e) {
-            log.error(e.getMessage(), e);
+
+        if (reporterList.contains("console")) {
+            final ConsoleReporter consoleReporter = ConsoleReporter.forRegistry(metrics)
+                    .build();
+            consoleReporter.report();
+            try {
+                String content = baos.toString("ISO-8859-1");
+                log.info(content);
+            } catch (UnsupportedEncodingException e) {
+                log.error(e.getMessage(), e);
+            }
         }
 
+        if (reporterList.contains("influxdb")) {
+            final String influxDbHost = prop.getProperty("influxdb.host");
+            final Integer influxDbPort = Integer.valueOf(prop.getProperty("influxdb.port"));
+            final String influxDbUsername = prop.getProperty("influxdb.username");
+            final String influxDbPassword = prop.getProperty("influxdb.password");
+            final String influxDbName = prop.getProperty("influxdb.db");
+            final ScheduledReporter influxdbReporter = InfluxdbReporter.forRegistry(metrics)
+                    .protocol(new HttpInfluxdbProtocol(influxDbHost, influxDbPort, influxDbUsername, influxDbPassword, influxDbName))
+                    .tag("server", getHostName())
+                    .tag("application", "jdbcTester")
+                    .build();
+            influxdbReporter.report();
+        }
     }
 
     private static String getHostName() {
