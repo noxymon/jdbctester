@@ -33,7 +33,6 @@ import java.io.ByteArrayOutputStream;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.PrintStream;
 import java.io.UnsupportedEncodingException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
@@ -78,9 +77,8 @@ public class App {
         String query = prop.getProperty("query");
         List<String> reporterList = Arrays.asList(prop.getProperty("reporter").trim().toLowerCase().split(","));
 
-        log.info("Connect to:" + connectionURL + " from " + getHostName());
+        log.debug("Connect to:" + connectionURL + " from " + getHostName());
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        PrintStream printStream = new PrintStream(baos);
 
         Connection conn = null;
         PreparedStatement ps = null;
@@ -89,7 +87,7 @@ public class App {
         int repeat = Integer.valueOf(
                 System.getProperty(REPEAT_KEY, DEFAULT_REPEAT)).intValue();
 
-        log.info("Submiting " + repeat + " queries: " + query);
+        log.debug("Submiting " + repeat + " queries: " + query);
         try {
             Class.forName(driver);
             tc = connectionTimer.time();
@@ -106,7 +104,7 @@ public class App {
                 if (param == null) {
                     break;
                 }
-                log.info(key + " = " + param);
+                log.debug(key + " = " + param);
                 String type = "object";
                 if (param.contains(":")) {
                     type = param.split(":", 2)[0];
@@ -145,7 +143,7 @@ public class App {
                 // don't stress too much
                 Thread.sleep((int) (Math.random() * 100));
             }
-            log.info("Fetched rows: " + rows + ", total bytes: " + bytes
+            log.debug("Fetched rows: " + rows + ", total bytes: " + bytes
                     + ", bytes/rows: " + ((float) bytes) / rows);
 
         } catch (SQLException e) {
